@@ -2,9 +2,10 @@ use nom::bytes::complete::{tag, take_until};
 use nom::multi::fold_many0;
 use nom::IResult;
 use std::collections::HashMap;
-use std::io::{BufReader, Read, Write};
-use std::net::TcpListener;
 use std::str::from_utf8;
+use std::sync::Arc;
+use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::{TcpListener, TcpStream};
 
 use anyhow::anyhow;
 use anyhow::Result;
@@ -73,57 +74,68 @@ fn take_line(input: &str) -> IResult<&str, &str> {
     Ok((input, line))
 }
 
-fn main() -> Result<()> {
-    // You can use print statements as follows for debugging, they'll be visible when running tests.
-    eprintln!("Logs from your program will appear here!");
+const MAX_BYTES: usize = 8192;
 
-    const MAX_BYTES: usize = 8192;
-    let listener = TcpListener::bind("127.0.0.1:4221")?;
+#[tokio::main]
+async fn main() -> Result<()> {
+    let listener = TcpListener::bind("127.0.0.1:4221").await?;
 
-    for stream in listener.incoming() {
-        match stream {
-            Ok(mut stream) => {
-                println!("accepted new connection");
-                let mut reader = BufReader::new(stream.try_clone()?);
-                let mut buf = [0u8; MAX_BYTES];
-                reader.read(&mut buf)?;
-                let (_, request) = http_request(from_utf8(&buf)?).unwrap();
-
-                eprintln!("request: {:?}", request);
-                match request.command.path.as_str() {
-                    "/" => write!(stream, "HTTP/1.1 200 OK\r\n\r\n")?,
-                    path if path.starts_with("/echo/") => {
-                        let echo_text = path
-                            .split("/echo/")
-                            .last()
-                            .ok_or(anyhow!("Could not find echo text"))?;
-                        write!(stream, "HTTP/1.1 200 OK\r\n")?;
-                        write!(stream, "Content-Type: text/plain\r\n")?;
-                        write!(stream, "Content-Length: {}\r\n", echo_text.len())?;
-                        write!(stream, "\r\n")?;
-                        write!(stream, "{}\r\n", echo_text)?;
-                        write!(stream, "\r\n")?;
-                    }
-                    "/user-agent" => {
-                        let user_agent = request
-                            .headers
-                            .0
-                            .get("User-Agent")
-                            .ok_or(anyhow!("User-Agent header not found"))?;
-                        write!(stream, "HTTP/1.1 200 OK\r\n")?;
-                        write!(stream, "Content-Type: text/plain\r\n")?;
-                        write!(stream, "Content-Length: {}\r\n", user_agent.len())?;
-                        write!(stream, "\r\n")?;
-                        write!(stream, "{}\r\n", user_agent)?;
-                        write!(stream, "\r\n")?;
-                    }
-                    _ => write!(stream, "HTTP/1.1 404 Not Found\r\n\r\n")?,
-                }
-            }
-            Err(e) => {
-                println!("error: {}", e);
-            }
+    loop {
+        match listener.accept().await {
+            Ok((mut stream, _)) => match handle_connection(&mut stream).await {
+                Ok(_) => println!("connection handled properly!"),
+                Err(err) => println!("connection failed due to {}", err),
+            },
+            Err(err) => println!("error: {}", err),
         }
+    }
+}
+
+async fn handle_connection(stream: &mut TcpStream) -> Result<()> {
+    println!("accepted new connection");
+    let (reader, mut writer) = stream.split();
+    let mut reader = BufReader::new(reader);
+    let mut buf = [0u8; MAX_BYTES];
+    reader.read(&mut buf).await?;
+    let (_, request) = http_request(from_utf8(&buf)?).map_err(|_| anyhow!("Http Request Parsing Error"))?;
+
+    eprintln!("request: {:?}", request);
+    match request.command.path.as_str() {
+        "/" => writer.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?,
+        path if path.starts_with("/echo/") => {
+            let echo_text = path
+                .split("/echo/")
+                .last()
+                .ok_or(anyhow!("Could not find echo text"))?;
+            let response = format!(
+                "HTTP/1.1 200 OK \r\n\
+                Content-Type: text/plain\r\n\
+                Content-Length: {}\r\n\
+                \r\n\
+                {}\r\n\r\n",
+                echo_text.len(),
+                echo_text
+            );
+            writer.write_all(response.as_bytes()).await?;
+        }
+        "/user-agent" => {
+            let user_agent = request
+                .headers
+                .0
+                .get("User-Agent")
+                .ok_or(anyhow!("User-Agent header not found"))?;
+            let response = format!(
+                "HTTP/1.1 200 OK \r\n\
+                Content-Type: text/plain\r\n\
+                Content-Length: {}\r\n\
+                \r\n\
+                {}\r\n\r\n",
+                user_agent.len(),
+                user_agent
+            );
+            writer.write_all(response.as_bytes()).await?;
+        }
+        _ => writer.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?,
     }
     Ok(())
 }
