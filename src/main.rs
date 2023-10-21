@@ -14,6 +14,7 @@ fn main() {
                 println!("accepted new connection");
                 let response = "HTTP/1.1 200 OK\r\n\r\n";
                 let _ = stream.write(response.as_bytes());
+                stream.flush().unwrap();
             }
             Err(e) => {
                 println!("error: {}", e);
