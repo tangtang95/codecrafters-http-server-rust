@@ -1,9 +1,9 @@
 use nom::bytes::complete::{tag, take_until};
 use nom::multi::fold_many0;
-use nom::IResult;
+use nom::{IResult, AsBytes};
+use tokio::fs::File;
 use std::collections::HashMap;
 use std::str::from_utf8;
-use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
@@ -78,15 +78,29 @@ const MAX_BYTES: usize = 8192;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let mut dir: Option<String> = None;
+    let mut args = std::env::args();
+    if args.len() == 3 {
+        args.next();
+        let flag = args.next();
+        if flag.is_some_and(|flag| flag.eq("--directory")) {
+            dir = args.next();
+        }
+    }
+
     let addr = "127.0.0.1:4221";
     let listener = TcpListener::bind(addr).await?;
     println!("http server listening on {}", addr);
 
     loop {
+        let copy_dir = match dir {
+           Some(ref x) => Some(x.clone()),
+           None => None
+        };
         match listener.accept().await {
             Ok((stream, _)) => { 
                 tokio::spawn(async move {
-                    match handle_connection(stream).await {
+                    match handle_connection(stream, copy_dir).await {
                         Ok(_) => println!("connection handled properly!"),
                         Err(err) => println!("connection failed due to {}", err),
                     }
@@ -97,7 +111,7 @@ async fn main() -> Result<()> {
     }
 }
 
-async fn handle_connection(mut stream: TcpStream) -> Result<()> {
+async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<()> {
     println!("accepted new connection");
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
@@ -124,6 +138,29 @@ async fn handle_connection(mut stream: TcpStream) -> Result<()> {
             );
             writer.write_all(response.as_bytes()).await?;
         }
+        path if path.starts_with("/files/") => {
+            let dir = dir.ok_or(anyhow!("directory not found"))?;
+            let filename = path.strip_prefix("/files/").ok_or(anyhow!("filename not found"))?;
+
+            match File::open(format!("{}/{}", dir, filename)).await {
+                Ok(mut file) => {
+                    let mut buf = vec![];
+                    file.read_to_end(&mut buf).await?;
+                    let response = format!(
+                        "HTTP/1.1 200 OK \r\n\
+                        Content-Type: text/octet-stream\r\n\
+                        Content-Length: {}\r\n\
+                        \r\n",
+                        buf.len()
+                    );
+                    writer.write_all(response.as_bytes()).await?;
+                    writer.write_all(&mut buf).await?;
+                },
+                Err(_) => {
+                    writer.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?
+                }
+            }
+        },
         "/user-agent" => {
             let user_agent = request
                 .headers
