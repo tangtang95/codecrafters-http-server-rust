@@ -36,6 +36,7 @@ fn http_request(input: &str) -> IResult<&str, HttpRequest> {
         acc
     })(input)?;
 
+    let (input, _) = tag("\r\n")(input)?;
     let (input, body) = take_until("\0")(input)?;
 
     Ok((
