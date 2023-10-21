@@ -78,20 +78,26 @@ const MAX_BYTES: usize = 8192;
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    let listener = TcpListener::bind("127.0.0.1:4221").await?;
+    let addr = "127.0.0.1:4221";
+    let listener = TcpListener::bind(addr).await?;
+    println!("http server listening on {}", addr);
 
     loop {
         match listener.accept().await {
-            Ok((mut stream, _)) => match handle_connection(&mut stream).await {
-                Ok(_) => println!("connection handled properly!"),
-                Err(err) => println!("connection failed due to {}", err),
+            Ok((stream, _)) => { 
+                tokio::spawn(async move {
+                    match handle_connection(stream).await {
+                        Ok(_) => println!("connection handled properly!"),
+                        Err(err) => println!("connection failed due to {}", err),
+                    }
+                });
             },
             Err(err) => println!("error: {}", err),
         }
     }
 }
 
-async fn handle_connection(stream: &mut TcpStream) -> Result<()> {
+async fn handle_connection(mut stream: TcpStream) -> Result<()> {
     println!("accepted new connection");
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::new(reader);
