@@ -61,8 +61,8 @@ fn http_command(input: &str) -> IResult<&str, HttpCommand> {
 
 fn http_header(input: &str) -> IResult<&str, (String, String)> {
     let (input, header) = take_line(input)?;
-    let (rest, header_key) = take_until(":")(header)?;
-    let (header_value, _) = tag(":")(rest)?;
+    let (rest, header_key) = take_until(": ")(header)?;
+    let (header_value, _) = tag(": ")(rest)?;
 
     Ok((input, (header_key.to_string(), header_value.to_string())))
 }
