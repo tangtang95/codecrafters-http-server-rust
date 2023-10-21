@@ -148,7 +148,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                     file.read_to_end(&mut buf).await?;
                     let response = format!(
                         "HTTP/1.1 200 OK \r\n\
-                        Content-Type: text/octet-stream\r\n\
+                        Content-Type: application/octet-stream\r\n\
                         Content-Length: {}\r\n\
                         \r\n",
                         buf.len()
