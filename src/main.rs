@@ -4,6 +4,7 @@ use nom::IResult;
 use nom::bytes::complete::{tag, take_until};
 
 use anyhow::Result;
+use anyhow::anyhow;
 
 #[derive(Debug)]
 struct HttpRequest {
@@ -57,18 +58,17 @@ fn main() -> Result<()>{
                 
                 eprintln!("request: {:?}", request);
                 match request.command.path.as_str() {
-                   "/"  => {
-                        let response = "HTTP/1.1 200 OK\r\n\r\n";
-                        
-                        stream.write(response.as_bytes())?;
-                        stream.flush()?;
+                   "/"  => write!(stream, "HTTP/1.1 200 OK\r\n\r\n")?,
+                   path if path.starts_with("/echo/") && path.split('/').count() == 3 => {
+                        let echo_text = path.split('/').last().ok_or(anyhow!("Could not find echo text"))?;
+                        write!(stream, "HTTP/1.1 200 OK\r\n")?;
+                        write!(stream, "Content-Type: text/plain\r\n")?;
+                        write!(stream, "Content-Length: {}\r\n", echo_text.len())?;
+                        write!(stream, "\r\n")?;
+                        write!(stream, "{}\r\n", echo_text)?;
+                        write!(stream, "\r\n")?;
                    },
-                   _ => {
-                        let response = "HTTP/1.1 404 Not Found\r\n\r\n";
-                        
-                        stream.write(response.as_bytes())?;
-                        stream.flush()?;
-                   }
+                   _  => write!(stream, "HTTP/1.1 404 Not Found\r\n\r\n")?,
                 }
             }
             Err(e) => {
