@@ -14,6 +14,7 @@ use anyhow::Result;
 struct HttpRequest {
     command: HttpCommand,
     headers: HttpHeaders,
+    body: String
 }
 
 #[derive(Debug)]
@@ -35,11 +36,14 @@ fn http_request(input: &str) -> IResult<&str, HttpRequest> {
         acc
     })(input)?;
 
+    let (input, body) = take_until("\0")(input)?;
+
     Ok((
         input,
         HttpRequest {
             command,
             headers: HttpHeaders(header_map),
+            body: body.to_string()
         },
     ))
 }
@@ -120,10 +124,10 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
     let (_, request) = http_request(from_utf8(&buf)?).map_err(|_| anyhow!("Http Request Parsing Error"))?;
 
     eprintln!("request: {:?}", request);
-    match request.command.path.as_str() {
-        "/" => writer.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?,
-        path if path.starts_with("/echo/") => {
-            let echo_text = path
+    match request.command {
+        req if req.path == "/" => writer.write_all("HTTP/1.1 200 OK\r\n\r\n".as_bytes()).await?,
+        req if req.path.starts_with("/echo/") => {
+            let echo_text = req.path
                 .split("/echo/")
                 .last()
                 .ok_or(anyhow!("Could not find echo text"))?;
@@ -138,9 +142,9 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
             );
             writer.write_all(response.as_bytes()).await?;
         }
-        path if path.starts_with("/files/") => {
+        req if req.path.starts_with("/files/") && req.method == "GET" => {
             let dir = dir.ok_or(anyhow!("directory not found"))?;
-            let filename = path.strip_prefix("/files/").ok_or(anyhow!("filename not found"))?;
+            let filename = req.path.strip_prefix("/files/").ok_or(anyhow!("filename not found"))?;
 
             match File::open(format!("{}/{}", dir, filename)).await {
                 Ok(mut file) => {
@@ -161,7 +165,16 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                 }
             }
         },
-        "/user-agent" => {
+        req if req.path.starts_with("/files/") && req.method == "POST" => {
+            let dir = dir.ok_or(anyhow!("directory not found"))?;
+            let filename = req.path.strip_prefix("/files/").ok_or(anyhow!("filename not found"))?;
+
+            let mut file = File::create(format!("{}/{}", dir, filename)).await?;
+            file.write_all(request.body.as_bytes()).await?;
+
+            writer.write_all("HTTP/1.1 201 Created\r\n\r\n".as_bytes()).await?
+        },
+        req if req.path == "/user-agent" => {
             let user_agent = request
                 .headers
                 .0
