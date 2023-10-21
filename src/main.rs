@@ -59,8 +59,8 @@ fn main() -> Result<()>{
                 eprintln!("request: {:?}", request);
                 match request.command.path.as_str() {
                    "/"  => write!(stream, "HTTP/1.1 200 OK\r\n\r\n")?,
-                   path if path.starts_with("/echo/") && path.split('/').count() == 3 => {
-                        let echo_text = path.split('/').last().ok_or(anyhow!("Could not find echo text"))?;
+                   path if path.starts_with("/echo/") => {
+                        let echo_text = path.split("/echo/").last().ok_or(anyhow!("Could not find echo text"))?;
                         write!(stream, "HTTP/1.1 200 OK\r\n")?;
                         write!(stream, "Content-Type: text/plain\r\n")?;
                         write!(stream, "Content-Length: {}\r\n", echo_text.len())?;
