@@ -1,8 +1,8 @@
 use nom::bytes::complete::{tag, take_until};
 use nom::multi::fold_many0;
 use nom::IResult;
-use std::collections::{hash_map, HashMap};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::collections::HashMap;
+use std::io::{BufReader, Read, Write};
 use std::net::TcpListener;
 use std::str::from_utf8;
 
