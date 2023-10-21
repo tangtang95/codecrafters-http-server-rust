@@ -1,5 +1,5 @@
 use std::net::TcpListener;
-use std::io::{Write, Read, BufReader, BufRead};
+use std::io::{Write, BufReader, BufRead};
 use nom::IResult;
 use nom::bytes::complete::{tag, take_until};
 
@@ -31,12 +31,11 @@ fn http_command(input: &str) -> IResult<&str, HttpCommand> {
     let (input, _) = tag(" ")(input)?;
     let (input, path) = take_until(" ")(input)?;
     let (input, _) = tag(" ")(input)?;
-    let (input, version) = take_until("\r\n")(input)?;
 
     Ok((input, HttpCommand {
         method: method.to_string(),
         path: path.to_string(),
-        version: version.to_string()
+        version: input.to_string()
     }))
 }
 
