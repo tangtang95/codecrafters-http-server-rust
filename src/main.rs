@@ -158,7 +158,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                     let mut buf = vec![];
                     file.read_to_end(&mut buf).await?;
                     let response = format!(
-                        "HTTP/1.1 200 OK \r\n\
+                        "HTTP/1.1 200 OK\r\n\
                         Content-Type: application/octet-stream\r\n\
                         Content-Length: {}\r\n\
                         \r\n",
@@ -188,7 +188,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                 .get("User-Agent")
                 .ok_or(anyhow!("User-Agent header not found"))?;
             let response = format!(
-                "HTTP/1.1 200 OK \r\n\
+                "HTTP/1.1 200 OK\r\n\
                 Content-Type: text/plain\r\n\
                 Content-Length: {}\r\n\
                 \r\n\
