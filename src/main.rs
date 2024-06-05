@@ -1,10 +1,10 @@
 use nom::bytes::complete::{tag, take_until};
 use nom::multi::fold_many0;
-use nom::{IResult, AsBytes};
+use nom::IResult;
 use tokio::fs::File;
 use std::collections::HashMap;
 use std::str::from_utf8;
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
 
 use anyhow::anyhow;
@@ -21,6 +21,8 @@ struct HttpRequest {
 struct HttpCommand {
     method: String,
     path: String,
+
+    #[allow(dead_code)]
     version: String,
 }
 
@@ -98,14 +100,11 @@ async fn main() -> Result<()> {
     println!("http server listening on {}", addr);
 
     loop {
-        let copy_dir = match dir {
-           Some(ref x) => Some(x.clone()),
-           None => None
-        };
+        let dir_clone = dir.clone();
         match listener.accept().await {
             Ok((stream, _)) => { 
                 tokio::spawn(async move {
-                    match handle_connection(stream, copy_dir).await {
+                    match handle_connection(stream, dir_clone).await {
                         Ok(_) => println!("connection handled properly!"),
                         Err(err) => println!("connection failed due to {}", err),
                     }
@@ -119,10 +118,9 @@ async fn main() -> Result<()> {
 async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result<()> {
     println!("accepted new connection");
     let (reader, mut writer) = stream.split();
-    let mut reader = BufReader::new(reader);
-    let mut buf = [0u8; MAX_BYTES];
-    reader.read(&mut buf).await?;
-    let (_, request) = http_request(from_utf8(&buf)?).map_err(|_| anyhow!("Http Request Parsing Error"))?;
+    let mut reader = BufReader::with_capacity(MAX_BYTES, reader);
+    let buf = reader.fill_buf().await?;
+    let (_, request) = http_request(from_utf8(buf)?).map_err(|_| anyhow!("Http Request Parsing Error"))?;
 
     eprintln!("request: {:?}", request);
     match request.command {
@@ -159,7 +157,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                         buf.len()
                     );
                     writer.write_all(response.as_bytes()).await?;
-                    writer.write_all(&mut buf).await?;
+                    writer.write_all(&buf).await?;
                 },
                 Err(_) => {
                     writer.write_all("HTTP/1.1 404 Not Found\r\n\r\n".as_bytes()).await?
