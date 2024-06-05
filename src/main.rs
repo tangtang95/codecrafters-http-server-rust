@@ -137,7 +137,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                 _ => None
             };
             let response = format!(
-                "HTTP/1.1 200 OK \r\n\
+                "HTTP/1.1 200 OK\r\n\
                 {}\
                 Content-Type: text/plain\r\n\
                 Content-Length: {}\r\n\
