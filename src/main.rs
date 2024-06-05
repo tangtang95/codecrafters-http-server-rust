@@ -39,7 +39,7 @@ fn http_request(input: &str) -> IResult<&str, HttpRequest> {
     })(input)?;
 
     let (input, _) = tag("\r\n")(input)?;
-    let (input, body) = take_until("\0")(input)?;
+    let body = input;
 
     Ok((
         input,
@@ -120,7 +120,8 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
     let (reader, mut writer) = stream.split();
     let mut reader = BufReader::with_capacity(MAX_BYTES, reader);
     let buf = reader.fill_buf().await?;
-    let (_, request) = http_request(from_utf8(buf)?).map_err(|_| anyhow!("Http Request Parsing Error"))?;
+    let request = from_utf8(buf)?;
+    let (_, request) = http_request(request).map_err(|_| anyhow!("Http Request Parsing Error"))?;
 
     eprintln!("request: {:?}", request);
     match request.command {
@@ -137,7 +138,7 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
             };
             let response = format!(
                 "HTTP/1.1 200 OK \r\n\
-                {}
+                {}\
                 Content-Type: text/plain\r\n\
                 Content-Length: {}\r\n\
                 \r\n\
