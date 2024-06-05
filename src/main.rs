@@ -130,12 +130,19 @@ async fn handle_connection(mut stream: TcpStream, dir: Option<String>) -> Result
                 .split("/echo/")
                 .last()
                 .ok_or(anyhow!("Could not find echo text"))?;
+            let requested_encoding = request.headers.0.get("Accept-Encoding").map(|encoding| encoding.as_str());
+            let content_encoding = match requested_encoding {
+                Some("gzip") => Some("Content-Encoding: gzip\r\n"),
+                _ => None
+            };
             let response = format!(
                 "HTTP/1.1 200 OK \r\n\
+                {}
                 Content-Type: text/plain\r\n\
                 Content-Length: {}\r\n\
                 \r\n\
                 {}\r\n\r\n",
+                content_encoding.unwrap_or(""),
                 echo_text.len(),
                 echo_text
             );
